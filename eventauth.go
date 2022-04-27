@@ -682,14 +682,16 @@ func checkUserLevels(senderLevel int64, senderID string, oldPowerLevels, newPowe
 			continue
 		}
 
-		// Check if the user is changing the level that was above or the same as their own.
-		if senderLevel <= level.old {
-			return errorf(
-				"sender with level %d is not allowed to change user level from %d to %d"+
-					" because the old level is equal to or above the level of the sender",
-				senderLevel, level.old, level.new,
-			)
-		}
+		/*
+			// Check if the user is changing the level that was above or the same as their own.
+			if senderLevel <= level.old {
+				return errorf(
+					"sender with level %d is not allowed to change user level from %d to %d"+
+						" because the old level is equal to or above the level of the sender",
+					senderLevel, level.old, level.new,
+				)
+			}
+		*/
 	}
 
 	return nil
@@ -877,7 +879,7 @@ func (e *eventAllower) commonChecks(event *Event) error {
 	eventLevel := e.powerLevels.EventLevel(event.Type(), stateKey != nil)
 	if senderLevel < eventLevel {
 		return errorf(
-			"sender %q is not allowed to send event. %d < %d",
+			"sender %v is not allowed to send event. Sender level: %d, required level: %d",
 			event.Sender(), senderLevel, eventLevel,
 		)
 	}
