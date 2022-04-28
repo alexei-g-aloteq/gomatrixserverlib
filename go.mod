@@ -1,5 +1,9 @@
 module github.com/alexei-g-aloteq/gomatrixserverlib
 
+// To update Go proxy cache:
+// GOPROXY=proxy.golang.org go list -m github.com/alexei-g-aloteq/gomatrixserverlib@vX.Y.Z
+// BEFORE first usage
+
 require (
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/google/go-cmp v0.4.0
