@@ -374,17 +374,20 @@ type allowerContext struct {
 	powerLevels PowerLevelContent
 	// The m.room.join_rules content for the room.
 	joinRule JoinRuleContent
+
+	skipRoomIdCheck bool
 }
 
-func newAllowerContext(provider AuthEventProvider) *allowerContext {
+func newAllowerContext(provider AuthEventProvider, skipRoomIdCheck bool) *allowerContext {
 	create, _ := NewCreateContentFromAuthEvents(provider)
 	powerLevels, _ := NewPowerLevelContentFromAuthEvents(provider, create.Creator)
 	joinRule, _ := NewJoinRuleContentFromAuthEvents(provider)
 	return &allowerContext{
-		provider:    provider,
-		create:      create,
-		powerLevels: powerLevels,
-		joinRule:    joinRule,
+		provider:        provider,
+		create:          create,
+		powerLevels:     powerLevels,
+		joinRule:        joinRule,
+		skipRoomIdCheck: skipRoomIdCheck,
 	}
 }
 
@@ -413,8 +416,8 @@ func (a *allowerContext) allowed(event *Event) error {
 // Allowed checks whether an event is allowed by the auth events.
 // It returns a NotAllowed error if the event is not allowed.
 // If there was an error loading the auth events then it returns that error.
-func Allowed(event *Event, authEvents AuthEventProvider) error {
-	return newAllowerContext(authEvents).allowed(event)
+func Allowed(event *Event, authEvents AuthEventProvider, skipRoomIdCheck bool) error {
+	return newAllowerContext(authEvents, skipRoomIdCheck).allowed(event)
 }
 
 // createEventAllowed checks whether the m.room.create event is allowed.
@@ -855,7 +858,8 @@ func (a *allowerContext) newEventAllower(senderID string) (e eventAllower, err e
 // commonChecks does the checks that are applied to all events types other than
 // m.room.create, m.room.member, or m.room.alias.
 func (e *eventAllower) commonChecks(event *Event) error {
-	if event.RoomID() != e.create.roomID {
+
+	if e.skipRoomIdCheck == false && event.RoomID() != e.create.roomID {
 		return errorf(
 			"create event has different roomID: %q (%s) != %q (%s)",
 			event.RoomID(), event.EventID(), e.create.roomID, e.create.eventID,

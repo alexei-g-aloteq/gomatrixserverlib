@@ -83,6 +83,8 @@ type EventBuilder struct {
 	// The events needed to authenticate this event. This can be
 	// either []EventReference for room v1/v2, and []string for room v3 onwards.
 	AuthEvents interface{} `json:"auth_events"`
+	// AuthEvents from the root room (if any)
+	RootRoomAuthEvents interface{} `json:"root_room_auth_events,omitempty"`
 	// The event ID of the event being redacted if this event is a "m.room.redaction".
 	Redacts string `json:"redacts,omitempty"`
 	// The depth of the event, This should be one greater than the maximum depth of the previous events.
@@ -94,6 +96,8 @@ type EventBuilder struct {
 	Content RawJSON `json:"content"`
 	// The JSON object for the "unsigned" key
 	Unsigned RawJSON `json:"unsigned,omitempty"`
+	// Root room id
+	RootRoomId *string `json:"root_room_id,omitempty"`
 }
 
 // SetContent sets the JSON content key of the event.
@@ -133,21 +137,25 @@ type eventFields struct {
 	Unsigned       RawJSON    `json:"unsigned"`
 	OriginServerTS Timestamp  `json:"origin_server_ts"`
 	Origin         ServerName `json:"origin"`
+
+	RootRoomID *string `json:"root_room_id"`
 }
 
 // Fields for room versions 1, 2.
 type eventFormatV1Fields struct {
 	eventFields
-	EventID    string           `json:"event_id,omitempty"`
-	PrevEvents []EventReference `json:"prev_events"`
-	AuthEvents []EventReference `json:"auth_events"`
+	EventID            string           `json:"event_id,omitempty"`
+	PrevEvents         []EventReference `json:"prev_events"`
+	AuthEvents         []EventReference `json:"auth_events"`
+	RootRoomAuthEvents []EventReference `json:"root_room_auth_events"`
 }
 
 // Fields for room versions 3, 4, 5.
 type eventFormatV2Fields struct {
 	eventFields
-	PrevEvents []string `json:"prev_events"`
-	AuthEvents []string `json:"auth_events"`
+	PrevEvents         []string `json:"prev_events"`
+	AuthEvents         []string `json:"auth_events"`
+	RootRoomAuthEvents []string `json:"root_room_auth_events"`
 }
 
 var emptyEventReferenceList = []EventReference{}
@@ -232,6 +240,20 @@ func (eb *EventBuilder) Build(
 			event.AuthEvents = resAuthEvents
 		case nil:
 			event.AuthEvents = []string{}
+		}
+		if event.RootRoomAuthEvents != nil {
+			switch rootAuthEvents := event.RootRoomAuthEvents.(type) {
+			case []string:
+				event.RootRoomAuthEvents = rootAuthEvents
+			case []EventReference:
+				resAuthEvents := []string{}
+				for _, authEvent := range rootAuthEvents {
+					resAuthEvents = append(resAuthEvents, authEvent.EventID)
+				}
+				event.RootRoomAuthEvents = resAuthEvents
+			case nil:
+				event.RootRoomAuthEvents = []string{}
+			}
 		}
 	}
 
@@ -1009,6 +1031,34 @@ func (e *Event) AuthEvents() []EventReference {
 	}
 }
 
+func (e *Event) RootRoomAuthEvents() []EventReference {
+	switch fields := e.fields.(type) {
+	case eventFormatV1Fields:
+		if fields.RootRoomAuthEvents == nil {
+			return nil
+		}
+		return fields.RootRoomAuthEvents
+	case eventFormatV2Fields:
+		if fields.RootRoomAuthEvents == nil {
+			return nil
+		}
+		result := make([]EventReference, 0, len(fields.RootRoomAuthEvents))
+		for _, id := range fields.RootRoomAuthEvents {
+			var sha Base64Bytes
+			if err := sha.Decode(id[1:]); err != nil {
+				panic("gomatrixserverlib: event ID is malformed: " + err.Error())
+			}
+			result = append(result, EventReference{
+				EventID:     id,
+				EventSHA256: sha,
+			})
+		}
+		return result
+	default:
+		panic(e.invalidFieldType())
+	}
+}
+
 // AuthEventIDs returns the event IDs of the events needed to auth the event.
 func (e *Event) AuthEventIDs() []string {
 	switch fields := e.fields.(type) {
@@ -1020,6 +1070,27 @@ func (e *Event) AuthEventIDs() []string {
 		return result
 	case eventFormatV2Fields:
 		return fields.AuthEvents
+	default:
+		panic(e.invalidFieldType())
+	}
+}
+
+func (e *Event) RootRoomAuthEventIDs() []string {
+	switch fields := e.fields.(type) {
+	case eventFormatV1Fields:
+		if fields.RootRoomAuthEvents == nil {
+			return nil
+		}
+		result := make([]string, 0, len(fields.RootRoomAuthEvents))
+		for _, id := range fields.RootRoomAuthEvents {
+			result = append(result, id.EventID)
+		}
+		return result
+	case eventFormatV2Fields:
+		if fields.RootRoomAuthEvents == nil {
+			return nil
+		}
+		return fields.RootRoomAuthEvents
 	default:
 		panic(e.invalidFieldType())
 	}
@@ -1044,6 +1115,17 @@ func (e *Event) RoomID() string {
 		return fields.RoomID
 	case eventFormatV2Fields:
 		return fields.RoomID
+	default:
+		panic(e.invalidFieldType())
+	}
+}
+
+func (e *Event) RootRoomID() *string {
+	switch fields := e.fields.(type) {
+	case eventFormatV1Fields:
+		return fields.RootRoomID
+	case eventFormatV2Fields:
+		return fields.RootRoomID
 	default:
 		panic(e.invalidFieldType())
 	}
